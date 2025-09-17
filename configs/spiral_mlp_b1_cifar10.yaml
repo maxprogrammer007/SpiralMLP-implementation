@@ -1,1 +1,27 @@
 # Configuration for SpiralMLP-B1 on CIFAR-10
+# configs/spiral_mlp_b1_cifar10.yaml
+
+# Model Parameters based on SpiralMLP-B1
+model_params:
+  img_size: 32
+  patch_size: 4
+  in_chans: 3
+  num_classes: 10
+  embed_dims: [64, 128, 320, 512]
+  depths: [2, 2, 2, 2]
+  mlp_ratios: [4, 4, 4, 4]
+  A_maxs: [3, 3, 3, 3]
+  Ts: [8, 8, 8, 8]
+
+# Data Parameters
+data_params:
+  data_path: "./data"
+  dataset: "CIFAR10"
+
+# Training Parameters
+train_params:
+  seed: 42
+  epochs: 50
+  batch_size: 64
+  lr: 0.001
+  checkpoint_dir: "./checkpoints"
