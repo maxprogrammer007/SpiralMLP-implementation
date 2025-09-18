@@ -1,4 +1,3 @@
-# Main script to train the model
 # train.py
 
 import torch
@@ -12,6 +11,8 @@ from tqdm import tqdm
 # Import our custom modules
 from src.model import SpiralMLP
 from src.utils import load_config, set_seed, count_parameters, save_checkpoint
+# <-- REVERTED import path for broader compatibility
+from torch.cuda.amp import GradScaler, autocast 
 
 def train(config):
     """
@@ -21,6 +22,10 @@ def train(config):
     set_seed(config['train_params']['seed'])
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using device: {device}")
+
+    # Initialize GradScaler for mixed precision training
+    # <-- REVERTED syntax for broader compatibility
+    scaler = GradScaler(enabled=(device == "cuda")) 
 
     # --- 2. Data Loading ---
     print("Loading data...")
@@ -43,17 +48,30 @@ def train(config):
         root=config['data_params']['data_path'], train=False, download=True, transform=transform_val
     )
 
+    # Optimized DataLoader settings
     train_loader = DataLoader(
-        train_dataset, batch_size=config['train_params']['batch_size'], shuffle=True, num_workers=2
+        train_dataset,
+        batch_size=config['train_params']['batch_size'],
+        shuffle=True,
+        num_workers=4,
+        pin_memory=True
     )
     val_loader = DataLoader(
-        val_dataset, batch_size=config['train_params']['batch_size'], shuffle=False, num_workers=2
+        val_dataset,
+        batch_size=config['train_params']['batch_size'],
+        shuffle=False,
+        num_workers=4,
+        pin_memory=True
     )
     print("✅ Data loaded successfully.")
 
     # --- 3. Model Initialization ---
     print("Initializing model...")
     model = SpiralMLP(**config['model_params'])
+    
+    # torch.compile() is disabled as it requires Triton, which is not well-supported on Windows.
+    # model = torch.compile(model) 
+    
     model.to(device)
     print(f"Model initialized with {count_parameters(model):,} trainable parameters.")
 
@@ -72,11 +90,18 @@ def train(config):
         for inputs, targets in train_pbar:
             inputs, targets = inputs.to(device), targets.to(device)
 
+            # Forward pass with Automatic Mixed Precision
+            # <-- REVERTED syntax for broader compatibility
+            with autocast(enabled=(device == "cuda")): 
+                outputs = model(inputs)
+                loss = criterion(outputs, targets)
+
             optimizer.zero_grad()
-            outputs = model(inputs)
-            loss = criterion(outputs, targets)
-            loss.backward()
-            optimizer.step()
+            
+            # Scaled backward pass
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
 
             train_loss += loss.item()
             _, predicted = outputs.max(1)
@@ -93,8 +118,12 @@ def train(config):
         with torch.no_grad():
             for inputs, targets in val_pbar:
                 inputs, targets = inputs.to(device), targets.to(device)
-                outputs = model(inputs)
-                loss = criterion(outputs, targets)
+                
+                # Use autocast in validation for performance consistency
+                # <-- REVERTED syntax for broader compatibility
+                with autocast(enabled=(device == "cuda")): 
+                    outputs = model(inputs)
+                    loss = criterion(outputs, targets)
 
                 val_loss += loss.item()
                 _, predicted = outputs.max(1)
